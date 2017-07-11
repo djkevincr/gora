@@ -15,4 +15,8 @@
  * limitations under the License.
  */
 
+/**
+ * Contains all the dataStore specific tests for OrientDB dataStore.
+ *
+ */
 package org.apache.gora.orientdb;

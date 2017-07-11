@@ -21,9 +21,17 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.orientechnologies.orient.core.metadata.schema.OSchemaShared;
+import com.orientechnologies.orient.core.record.impl.ODocument;
+import org.apache.avro.specific.SpecificRecord;
+
 import java.util.HashMap;
 import java.util.Locale;
 
+/**
+ * Maintains mapping between AVRO data bean and OrientDB document.
+ *
+ */
 public class OrientDBMapping {
 
     public static final Logger log = LoggerFactory.getLogger(OrientDBMapping.class);
@@ -33,21 +41,51 @@ public class OrientDBMapping {
     private HashMap<String, String> documentToClass = new HashMap<>();
     private HashMap<String, DocumentFieldType> documentFields = new HashMap<>();
 
+    /**
+     * Returns main OrientDB document class which matches to persistent bean.
+     *
+     * @return a {@link ODocument} class name.
+     */
     public String getDocumentClass() {
         return documentClass;
     }
 
+    /**
+     * Setter for main OrientDB document class which matches for persistent bean.
+     *
+     * @param documentClass {@link ODocument} class name.
+     */
     public void setDocumentClass(String documentClass) {
         this.documentClass = documentClass;
     }
 
+    /**
+     * Register mapping {@link com.orientechnologies.orient.core.record.impl.ODocument}
+     * field name to it s data type {@link OType}
+     *
+     * @param name {@link ODocument} class name.
+     * @param type {@link DocumentFieldType} field data type.
+     */
     private void registerDocumentField(String name, DocumentFieldType type) {
+        if (OSchemaShared.checkClassNameIfValid(name) != null) {
+            throw new IllegalArgumentException("'" + name
+                    + "' is an invalid field name for a OrientDB document. '"
+                    + OSchemaShared.checkClassNameIfValid(name) + "' is not a valid character.");
+        }
         if (documentFields.containsKey(name) && (documentFields.get(name) != type))
             throw new IllegalStateException("The field '" + name + "' is already "
                     + "registered with a different type.");
         documentFields.put(name, type);
     }
 
+    /**
+     * Register mapping between AVRO {@link SpecificRecord}
+     * record field, ODocument field and it's type.
+     *
+     * @param classFieldName {@link SpecificRecord} field name.
+     * @param docFieldName {@link ODocument} field name.
+     * @param fieldType {@link DocumentFieldType} field data type as string.
+     */
     public void registerClassField(String classFieldName,
                                    String docFieldName, String fieldType) {
         try {
@@ -73,21 +111,44 @@ public class OrientDBMapping {
         }
     }
 
+    /**
+     * Returns all fields in AVRO {@link org.apache.hadoop.io.serializer.avro.Record} record.
+     *
+     * @return array of fields in string.
+     */
     public String[] getDocumentFields(){
         return documentToClass.keySet().toArray(new String[documentToClass.keySet().size()]);
     }
 
+    /**
+     * Return ODocument name given it's mapped AVRO {@link SpecificRecord}
+     * record field name.
+     *
+     * @param field AVRO record field name in string
+     * @return matching ODocument {@link ODocument} field name in string.
+     */
     public String getDocumentField(String field) {
         return classToDocument.get(field);
     }
 
+    /**
+     * Return ODocument name given it's mapped AVRO {@link SpecificRecord}
+     * record field name.
+     *
+     * @param field AVRO record field name in string
+     * @return matching ODocument {@link ODocument} field name in string.
+     */
     protected DocumentFieldType getDocumentFieldType(String field) {
         return documentFields.get(field);
     }
 
+    /**
+     * Currently supporting data types from OrientDB data types  {@link OType}
+     */
     public static enum DocumentFieldType {
 
         INTEGER(OType.INTEGER.name()),
+        LONG(OType.LONG.name()),
         FLOAT(OType.FLOAT.name()),
         SHORT(OType.SHORT.name()),
         DOUBLE(OType.DOUBLE.name()),

@@ -18,6 +18,7 @@
 package org.apache.gora.orientdb.query;
 
 import com.github.raymanrt.orientqb.query.Parameter;
+import com.github.raymanrt.orientqb.query.Projection;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.apache.gora.orientdb.store.OrientDBMapping;
@@ -31,6 +32,11 @@ import java.util.Map;
 
 import static com.github.raymanrt.orientqb.query.Projection.projection;
 
+
+/**
+ * OrientDB specific implementation of the {@link org.apache.gora.query.Query} interface.
+ *
+ */
 public class OrientDBQuery<K, T extends PersistentBase> extends QueryBase<K, T> {
 
   private OSQLSynchQuery<ODocument> dbQuery;
@@ -44,16 +50,33 @@ public class OrientDBQuery<K, T extends PersistentBase> extends QueryBase<K, T> 
     super(dataStore);
   }
 
+  /**
+   * Return populated {@link OSQLSynchQuery} Orient DB query.
+   *
+   * @return a {@link OSQLSynchQuery} query executable over Orient DB.
+   */
   public OSQLSynchQuery<ODocument> getOrientDBQuery() {
     return dbQuery;
   }
 
+  /**
+   * Dynamic parameters for {@link OSQLSynchQuery} Orient DB query.
+   *
+   * @return a param map related to {@link OSQLSynchQuery} Orient DB query.
+   */
   public Map<String, Object> getParams() {
     return params;
   }
 
+  /**
+   * Convert Gora query to Orient DB specific query which underline API understands.
+   * And maintain it s state encapsulated to Gora implementation of the {@link org.apache.gora.query.Query}.
+   *
+   * @return a {@link OSQLSynchQuery} query executable over Orient DB.
+   */
   public OSQLSynchQuery<ODocument> populateOrientDBQuery(final OrientDBMapping orientDBMapping,
-                                                         final String[] fields) {
+                                                         final String[] fields,
+                                                         final String[] schemaFields) {
     params = new HashMap<String, Object>();
     Query selectQuery = new Query();
     selectQuery.from(orientDBMapping.getDocumentClass());
@@ -67,18 +90,22 @@ public class OrientDBQuery<K, T extends PersistentBase> extends QueryBase<K, T> 
         params.put("key_lower", this.getStartKey());
       }
       if (this.getEndKey() != null) {
-        selectQuery.where(projection("_id").ge(Parameter.parameter("key_upper")));
+        selectQuery.where(projection("_id").le(Parameter.parameter("key_upper")));
         params.put("key_upper", this.getEndKey());
       }
     }
 
-    for (String k : fields) {
-      String dbFieldName = orientDBMapping.getDocumentField(k);
-      if (dbFieldName != null && dbFieldName.length() > 0) {
-        selectQuery.select(dbFieldName);
+    if(fields.length == schemaFields.length){
+      selectQuery.select(Projection.ALL);
+    } else {
+      for (String k : fields) {
+        String dbFieldName = orientDBMapping.getDocumentField(k);
+        if (dbFieldName != null && dbFieldName.length() > 0) {
+          selectQuery.select(dbFieldName);
+        }
       }
+      selectQuery.select("_id");
     }
-
     dbQuery = new OSQLSynchQuery<ODocument>(selectQuery.toString());
     return dbQuery;
   }

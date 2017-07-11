@@ -30,6 +30,10 @@ import org.jdom.input.SAXBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Utility builder for create OrientDB mapping from gora-orientdb-mapping.xml.
+ *
+ */
 public class OrientDBMappingBuilder<K, T extends PersistentBase> {
 
     public static final String ATT_NAME = "name";
@@ -50,6 +54,11 @@ public class OrientDBMappingBuilder<K, T extends PersistentBase> {
         this.mapping = new OrientDBMapping();
     }
 
+    /**
+     * Build OrientDB dataStore mapping from gora-orientdb-mapping.xml given from class path
+     * or file system location.
+     *
+     */
     public OrientDBMapping build() {
         if (mapping.getDocumentClass() == null)
             throw new IllegalStateException("Document Class is not specified.");

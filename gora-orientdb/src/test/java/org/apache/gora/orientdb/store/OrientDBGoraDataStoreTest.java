@@ -22,14 +22,19 @@ import org.apache.gora.orientdb.GoraOrientDBTestDriver;
 import org.apache.gora.store.DataStoreTestBase;
 import org.junit.BeforeClass;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.After;
+import org.junit.Before;
+import org.junit.Ignore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Executes all the dataStore specific integration tests for OrientDB dataStore.
+ *
+ */
 public class OrientDBGoraDataStoreTest extends DataStoreTestBase {
 
-  private static final Logger LOG = LoggerFactory.getLogger(OrientDBGoraDataStoreTest.class);
+  private static final Logger log = LoggerFactory.getLogger(OrientDBGoraDataStoreTest.class);
 
   @BeforeClass
   public static void setUpClass() throws Exception {
@@ -50,6 +55,12 @@ public class OrientDBGoraDataStoreTest extends DataStoreTestBase {
   @After
   public void tearDown() throws Exception {
     super.tearDown();
+  }
+
+  @Ignore("3 types union field is not supported by OrientDBStore.")
+  @Override
+  public void testGet3UnionField() throws Exception {
+    //3 types union field is not supported by OrientDBStore.
   }
 
 }

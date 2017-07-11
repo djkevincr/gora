@@ -22,12 +22,15 @@ import org.apache.gora.examples.generated.WebPage;
 import org.apache.gora.orientdb.GoraOrientDBTestDriver;
 import org.apache.gora.store.DataStore;
 import org.apache.gora.store.DataStoreFactory;
-import org.apache.hadoop.conf.Configuration;
 import org.junit.After;
 import org.junit.Before;
 
 import java.io.IOException;
 
+/**
+ * Executes tests for MR jobs over OrientDB dataStore.
+ *
+ */
 public class OrientDBStoreMapReduceTest extends DataStoreMapReduceTestBase {
 
   private GoraOrientDBTestDriver driver;
@@ -54,7 +57,7 @@ public class OrientDBStoreMapReduceTest extends DataStoreMapReduceTestBase {
   @Override
   protected DataStore<String, WebPage> createWebPageDataStore() throws IOException {
     try {
-      return DataStoreFactory.getDataStore(String.class, WebPage.class, new Configuration(), true);
+      return DataStoreFactory.getDataStore(String.class, WebPage.class, driver.getConfiguration());
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

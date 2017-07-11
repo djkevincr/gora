@@ -20,6 +20,7 @@ package org.apache.gora.orientdb.query;
 import java.io.IOException;
 import java.util.Iterator;
 
+import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OConcurrentResultSet;
 import org.apache.gora.orientdb.store.OrientDBStore;
@@ -30,8 +31,15 @@ import org.apache.gora.store.DataStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * OrientDB specific implementation of the {@link org.apache.gora.query.Result} interface.
+ *
+ */
 public class OrientDBResult<K, T extends PersistentBase> extends ResultBase<K, T> {
 
+  /**
+   * Reference to the OrientDB Results set.
+   */
   private OConcurrentResultSet<ODocument> resultSet;
   private int size;
   private static final Logger log = LoggerFactory.getLogger(OrientDBResult.class);
@@ -72,15 +80,23 @@ public class OrientDBResult<K, T extends PersistentBase> extends ResultBase<K, T
 
   @Override
   protected boolean nextInner() throws IOException {
-    if (!resultSetIterator.hasNext()) {
-      return false;
-    }
+    ODatabaseDocumentTx loadTx = ((OrientDBStore<K, T>) getDataStore())
+            .getConnectionPool().acquire();
+    loadTx.activateOnCurrentThread();
+    try {
 
-    ODocument obj = resultSetIterator.next();
-    key = (K) obj.field("_id");
-    persistent = ((OrientDBStore<K, T>) getDataStore())
-            .convertOrientDocToAvroBean(obj, getQuery().getFields());
-    return persistent != null;
+      if (!resultSetIterator.hasNext()) {
+        return false;
+      }
+
+      ODocument obj = resultSetIterator.next();
+      key = (K) obj.field("_id");
+      persistent = ((OrientDBStore<K, T>) getDataStore())
+              .convertOrientDocToAvroBean(obj, getQuery().getFields());
+      return persistent != null;
+    } finally {
+      loadTx.close();
+    }
   }
 
 }

@@ -28,6 +28,11 @@ import org.apache.gora.util.GoraException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Driver to set up an embedded OrientDB database instance for Gora
+ * dataStore specific integration tests.
+ *
+ */
 public class GoraOrientDBTestDriver extends GoraTestDriver {
 
   private static Logger log = LoggerFactory.getLogger(GoraOrientDBTestDriver.class);
@@ -39,19 +44,26 @@ public class GoraOrientDBTestDriver extends GoraTestDriver {
     super(OrientDBStore.class);
   }
 
+  /**
+   * Initialize embedded OrientDB server instance as per the gora-orientdb-mapping.xml
+   * server configuration file.
+   */
   @Override
   public void setUpClass() throws Exception {
     server = OServerMain.create();
     server.setServerRootDirectory(SERVER_DIRECTORY);
     server.startup(getClass().getResourceAsStream(SERVER_CONFIGURATION));
     server.activate();
-    //TODO - improve logging
+    log.info("OrientDB Embedded Server started successfully.");
   }
 
+  /**
+   * Terminate embedded OrientDB server.
+   */
   @Override
   public void tearDownClass() throws Exception {
     server.shutdown();
-    //TODO - improve logging
+    log.info("OrientDB Embedded Server terminated successfully.");
   }
 
   @Override

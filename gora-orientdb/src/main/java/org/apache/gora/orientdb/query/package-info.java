@@ -15,4 +15,9 @@
  * limitations under the License.
  */
 
+/**
+ * This package contains all the OrientDB dataStore query representation class as well as Result set representing class
+ * when query is executed over the OrientDB dataStore.
+ *
+ */
 package org.apache.gora.orientdb.query;

@@ -15,4 +15,9 @@
  * limitations under the License.
  */
 
+/**
+ * This package contains main OrientDB dataStore class and dataStore mapping representing class, and
+ * utility classes to build dataStore specific mappings.
+ *
+ */
 package org.apache.gora.orientdb.store;

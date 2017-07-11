@@ -15,4 +15,8 @@
  * limitations under the License.
  */
 
+/**
+ * Contains tests for MR jobs over OrientDB dataStore.
+ *
+ */
 package org.apache.gora.orientdb.mapreduce;

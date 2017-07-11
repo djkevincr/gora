@@ -19,6 +19,10 @@ package org.apache.gora.orientdb.store;
 
 import java.util.Properties;
 
+/**
+ * Maintains OrientDB client related properties parsed from gora.properties.
+ *
+ */
 public class OrientDBStoreParameters {
 
     public static final String ORIENT_DB_MAPPING_FILE = "gora.orientdb.mapping.file";
@@ -41,34 +45,74 @@ public class OrientDBStoreParameters {
     private String storageType;
 
 
+    /**
+     * Return classpath or file system location for OrientDB mapping file. Eg:- /gora-orientdb-mapping.xml
+     *
+     * @return OrientDB Mapping file Location as string.
+     */
     public String getMappingFile() {
         return this.mappingFile;
     }
 
+    /**
+     * Return remote OrientDB server host name. Eg:- localhost
+     *
+     * @return OrientDB remote server host as string.
+     */
     public String getServerHost() {
         return this.serverHost;
     }
 
+    /**
+     * Return remote OrientDB server port number. Eg:- 2424
+     *
+     * @return OrientDB remote server port number as string.
+     */
     public String getServerPort() {
         return this.serverPort;
     }
 
+    /**
+     * Return remote OrientDB server client connecting user username. Eg:- admin
+     *
+     * @return OrientDB remote server client connecting user username as string.
+     */
     public String getUserName() {
         return this.userName;
     }
 
+    /**
+     * Return remote OrientDB server client connecting user password. Eg:- admin
+     *
+     * @return OrientDB remote server client connecting user pass as string.
+     */
     public String getUserPassword() {
         return this.userPassword;
     }
 
+    /**
+     * Return remote OrientDB server pointing database name. Eg:- gora
+     *
+     * @return OrientDB remote server pointing database name as string.
+     */
     public String getDatabaseName() {
         return this.databaseName;
     }
 
+    /**
+     * Return remote OrientDB client connections pool size. Eg:- 80
+     *
+     * @return OrientDB remote server client connections pool size as string.
+     */
     public String getConnectionPoolSize() {
         return this.connPoolSize;
     }
 
+    /**
+     * Return remote OrientDB server storage type of pointing database. Eg:- plocal, memory
+     *
+     * @return OrientDB remote server storage type of pointing database.
+     */
     public String getStorageType() {
         return this.storageType;
     }
@@ -91,6 +135,11 @@ public class OrientDBStoreParameters {
         this.storageType = storageType;
     }
 
+    /**
+     * Extraction OrientDB dataStore properties from {@link Properties} gora.properties file.
+     *
+     * @return OrientDB client properties encapsulated inside instance of {@link OrientDBStoreParameters}
+     */
     public static OrientDBStoreParameters load(Properties properties) {
         String propMappingFile = properties.getProperty(ORIENT_DB_MAPPING_FILE,
                 OrientDBStore.DEFAULT_MAPPING_FILE);

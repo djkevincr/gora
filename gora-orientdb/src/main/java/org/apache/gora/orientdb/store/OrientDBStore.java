@@ -43,6 +43,7 @@ import com.orientechnologies.orient.core.db.record.OTrackedSet;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.query.OConcurrentResultSet;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.apache.avro.Schema;
@@ -65,6 +66,10 @@ import javax.xml.bind.DatatypeConverter;
 
 import static com.github.raymanrt.orientqb.query.Projection.projection;
 
+/**
+ * {@link org.apache.gora.orientdb.store.OrientDBStore} is the primary class
+ * responsible for facilitating GORA CRUD operations on OrientDB documents.
+ */
 public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K, T> {
 
   public static final String DEFAULT_MAPPING_FILE = "/gora-orientdb-mapping.xml";
@@ -76,6 +81,13 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
   private OPartitionedDatabasePool connectionPool;
   private List<ODocument> docBatch = new ArrayList<>();
 
+  /**
+   * Initialize the OrientDB dataStore by {@link Properties} parameters.
+   *
+   * @param keyClass key class type for dataStore.
+   * @param persistentClass persistent class type for dataStore.
+   * @param properties OrientDB dataStore properties EG:- OrientDB client credentials.
+   */
   @Override
   public void initialize(Class<K> keyClass, Class<T> persistentClass, Properties properties) {
     super.initialize(keyClass, persistentClass, properties);
@@ -86,9 +98,10 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       ROOT_DATABASE_URL = ROOT_URL.concat("/").concat(orientDbStoreParams.getDatabaseName());
       remoteServerAdmin = new OServerAdmin(ROOT_URL).connect(orientDbStoreParams.getUserName(),
               orientDbStoreParams.getUserPassword());
-      if(!remoteServerAdmin.existsDatabase(orientDbStoreParams.getDatabaseName(), "memory")){
-        remoteServerAdmin.createDatabase(orientDbStoreParams.getDatabaseName(),"document","memory");
+      if (!remoteServerAdmin.existsDatabase(orientDbStoreParams.getDatabaseName(), "memory")) {
+        remoteServerAdmin.createDatabase(orientDbStoreParams.getDatabaseName(), "document", "memory");
       }
+
       if (orientDbStoreParams.getConnectionPoolSize() != null) {
         int connPoolSize = Integer.valueOf(orientDbStoreParams.getConnectionPoolSize());
         connectionPool = new OPartitionedDatabasePoolFactory(connPoolSize)
@@ -101,11 +114,12 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
 
       OrientDBMappingBuilder<K, T> builder = new OrientDBMappingBuilder<>(this);
       orientDBMapping = builder.fromFile(orientDbStoreParams.getMappingFile()).build();
-      if(!schemaExists()){
+
+      if (!schemaExists()) {
         createSchema();
       }
     } catch (Exception e) {
-      LOG.error("Error while initializing OrientDB store: {}",
+      LOG.error("Error while initializing OrientDB dataStore: {}",
               new Object[]{e.getMessage()});
       throw new RuntimeException(e);
     }
@@ -122,6 +136,10 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
     return orientDBMapping.getDocumentClass();
   }
 
+  /**
+   * Create a new class of OrientDB documents if necessary. Enforce specified schema over the document class.
+   *
+   */
   @Override
   public void createSchema() {
     if (schemaExists()) {
@@ -129,26 +147,45 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
     }
 
     ODatabaseDocumentTx schemaTx = connectionPool.acquire();
-    OClass documentClass = schemaTx.getMetadata().getSchema().createClass(orientDBMapping.getDocumentClass());
-    documentClass.createProperty("_id",
-            OType.getTypeByClass(super.getKeyClass())).createIndex(OClass.INDEX_TYPE.UNIQUE);
-    for (String docField : orientDBMapping.getDocumentFields()) {
-      documentClass.createProperty(docField,
-              OType.valueOf(orientDBMapping.getDocumentFieldType(docField).name()));
+    schemaTx.activateOnCurrentThread();
+    try {
+
+      OClass documentClass = schemaTx.getMetadata().getSchema().createClass(orientDBMapping.getDocumentClass());
+      documentClass.createProperty("_id",
+              OType.getTypeByClass(super.getKeyClass())).createIndex(OClass.INDEX_TYPE.UNIQUE);
+      for (String docField : orientDBMapping.getDocumentFields()) {
+        documentClass.createProperty(docField,
+                OType.valueOf(orientDBMapping.getDocumentFieldType(docField).name()));
+      }
+      schemaTx.getMetadata().getSchema().reload();
+    } finally {
+      schemaTx.close();
     }
-    schemaTx.close();
   }
 
+  /**
+   * Deletes enforced schema over OrientDB Document class.
+   *
+   */
   @Override
   public void deleteSchema() {
     ODatabaseDocumentTx schemaTx = connectionPool.acquire();
-    schemaTx.getMetadata().getSchema().dropClass(orientDBMapping.getDocumentClass());
-    schemaTx.close();
+    schemaTx.activateOnCurrentThread();
+    try {
+      schemaTx.getMetadata().getSchema().dropClass(orientDBMapping.getDocumentClass());
+    } finally {
+      schemaTx.close();
+    }
   }
 
+  /**
+   * Check whether there exist a schema enforced over OrientDB document class.
+   *
+   */
   @Override
   public boolean schemaExists() {
     ODatabaseDocumentTx schemaTx = connectionPool.acquire();
+    schemaTx.activateOnCurrentThread();
     try {
       return schemaTx.getMetadata().getSchema()
               .existsClass(orientDBMapping.getDocumentClass());
@@ -161,7 +198,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
   public T get(K key, String[] fields) {
     String[] dbFields = getFieldsToQuery(fields);
     com.github.raymanrt.orientqb.query.Query selectQuery = new com.github.raymanrt.orientqb.query.Query();
-    for (String k : fields) {
+    for (String k : dbFields) {
       String dbFieldName = orientDBMapping.getDocumentField(k);
       if (dbFieldName != null && dbFieldName.length() > 0) {
         selectQuery.select(dbFieldName);
@@ -173,6 +210,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
     params.put("key", key);
     OSQLSynchQuery<ODocument> query = new OSQLSynchQuery<ODocument>(selectQuery.toString());
     ODatabaseDocumentTx selectTx = connectionPool.acquire();
+    selectTx.activateOnCurrentThread();
     try {
       List<ODocument> result = selectTx.command(query).execute(params);
       if (result.size() == 1) {
@@ -188,8 +226,26 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
   @Override
   public void put(K key, T val) {
     if (val.isDirty()) {
-      ODocument document = convertAvroBeanToOrientDoc(key, val);
-      docBatch.add(document);
+      OrientDBQuery<K,T> dataStoreQuery = new OrientDBQuery<>(this);
+      dataStoreQuery.setStartKey(key);
+      dataStoreQuery.setEndKey(key);
+      dataStoreQuery.populateOrientDBQuery(orientDBMapping, getFieldsToQuery(null), getFields());
+
+      ODatabaseDocumentTx selectTx = connectionPool.acquire();
+      selectTx.activateOnCurrentThread();
+      try {
+        List<ODocument> result = selectTx.command(dataStoreQuery.getOrientDBQuery())
+                .execute(dataStoreQuery.getParams());
+        if (result.size() == 1) {
+          ODocument document = updateOrientDocFromAvroBean(key, val, result.get(0));
+          docBatch.add(document);
+        } else {
+          ODocument document = convertAvroBeanToOrientDoc(key, val);
+          docBatch.add(document);
+        }
+      } finally {
+        selectTx.close();
+      }
     } else {
       LOG.info("Ignored putting persistent bean {} in the store as it is neither "
               + "new, neither dirty.", new Object[]{val});
@@ -203,11 +259,12 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
             .where(projection("_id").eq(Parameter.parameter("key")));
     Map<String, Object> params = new HashMap<String, Object>();
     params.put("key", key);
-    OSQLSynchQuery<ODocument> query = new OSQLSynchQuery<ODocument>(delete.toString());
+    OCommandSQL query = new OCommandSQL(delete.toString().replace("DELETE", "DELETE FROM"));
     ODatabaseDocumentTx deleteTx = connectionPool.acquire();
+    deleteTx.activateOnCurrentThread();
     try {
-      List<ODocument> result = deleteTx.command(query).execute(params);
-      if (result != null && result.size() == 1) {
+      int deleteCount = deleteTx.command(query).execute(params);
+      if (deleteCount == 1) {
         return true;
       } else {
         return false;
@@ -220,33 +277,79 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
   @Override
   public long deleteByQuery(Query<K, T> query) {
     Delete delete = new Delete();
-    delete.from(orientDBMapping.getDocumentClass())
-            .where(projection("_id").ge(Parameter.parameter("start")))
-            .where(projection("_id").le(Parameter.parameter("end")));
+    delete.from(orientDBMapping.getDocumentClass());
     Map<String, Object> params = new HashMap<String, Object>();
-    params.put("start", query.getStartKey());
-    params.put("end", query.getEndKey());
-
-    OSQLSynchQuery<ODocument> dbQuery = new OSQLSynchQuery<ODocument>(delete.toString());
-    ODatabaseDocumentTx deleteTx = connectionPool.acquire();
-    try {
-      List<ODocument> result = deleteTx.command(dbQuery).execute(params);
-      if (result != null && result.size() > 0) {
-        return result.size();
-      } else {
-        return 0;
+    if (query.getFields() == null || (query.getFields().length == getFields().length)) {
+      if (query.getStartKey() != null) {
+        delete.where(projection("_id").ge(Parameter.parameter("start")));
+        params.put("start", query.getStartKey());
       }
-    } finally {
-      deleteTx.close();
+      if (query.getEndKey() != null) {
+        delete.where(projection("_id").le(Parameter.parameter("end")));
+        params.put("end", query.getEndKey());
+      }
+
+      OCommandSQL dbQuery = new OCommandSQL(delete.toString().replace("DELETE", "DELETE FROM"));
+      ODatabaseDocumentTx deleteTx = connectionPool.acquire();
+      deleteTx.activateOnCurrentThread();
+      try {
+        int deleteCount;
+        if (params.isEmpty()) {
+          deleteCount = deleteTx.command(dbQuery).execute();
+        } else {
+          deleteCount = deleteTx.command(dbQuery).execute(params);
+        }
+        if (deleteCount > 0) {
+          return deleteCount;
+        } else {
+          return 0;
+        }
+      } finally {
+        deleteTx.close();
+      }
+    } else {
+
+      OrientDBQuery<K, T> dataStoreQuery = new OrientDBQuery<>(this);
+      dataStoreQuery.setStartKey(query.getStartKey());
+      dataStoreQuery.setEndKey(query.getEndKey());
+      dataStoreQuery.populateOrientDBQuery(orientDBMapping, getFieldsToQuery(null), getFields());
+
+      ODatabaseDocumentTx selectTx = connectionPool.acquire();
+      selectTx.activateOnCurrentThread();
+      try {
+        List<ODocument> result = selectTx.command(dataStoreQuery.getOrientDBQuery())
+                .execute(dataStoreQuery.getParams());
+        if (result != null && result.isEmpty()) {
+          return 0;
+        } else {
+          for (ODocument doc : result) {
+            for (String docField : query.getFields()) {
+              if (doc.containsField(orientDBMapping.getDocumentField(docField))) {
+                doc.removeField(orientDBMapping.getDocumentField(docField));
+              }
+            }
+            doc.save();
+          }
+          return result.size();
+        }
+      } finally {
+        selectTx.close();
+      }
     }
   }
 
   @Override
   public Result<K, T> execute(Query<K, T> query) {
     String[] fields = getFieldsToQuery(query.getFields());
-    OrientDBQuery dataStoreQuery = ((OrientDBQuery) query);
-    dataStoreQuery.populateOrientDBQuery(orientDBMapping, fields);
+    OrientDBQuery dataStoreQuery;
+    if (query instanceof OrientDBQuery) {
+      dataStoreQuery = ((OrientDBQuery) query);
+    } else {
+      dataStoreQuery = (OrientDBQuery) ((PartitionQueryImpl<K, T>) query).getBaseQuery();
+    }
+    dataStoreQuery.populateOrientDBQuery(orientDBMapping, fields, getFields());
     ODatabaseDocumentTx selectTx = connectionPool.acquire();
+    selectTx.activateOnCurrentThread();
     try {
       OConcurrentResultSet<ODocument> result = selectTx.command(dataStoreQuery.getOrientDBQuery())
               .execute(dataStoreQuery.getParams());
@@ -270,27 +373,47 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
     List<PartitionQuery<K, T>> partitions = new ArrayList<>();
     PartitionQueryImpl<K, T> partitionQuery = new PartitionQueryImpl<>(
             query);
-    partitionQuery.setConf(getConf());
+    partitionQuery.setConf(this.getConf());
     partitions.add(partitionQuery);
     return partitions;
   }
 
+  /**
+   * Flushes locally cached to content in memory to remote OrientDB server.
+   *
+   */
   @Override
   public void flush() {
     ODatabaseDocumentTx updateTx = connectionPool.acquire();
+    updateTx.activateOnCurrentThread();
     try {
       for (ODocument document : docBatch) {
-        document.save();
+        updateTx.save(document);
       }
     } finally {
       updateTx.close();
+      docBatch.clear();
     }
   }
 
+  /**
+   * Releases resources which have been used dataStore. Eg:- OrientDB Client connection pool.
+   *
+   */
   @Override
   public void close() {
+    docBatch.clear();
     remoteServerAdmin.close();
     connectionPool.close();
+  }
+
+  /**
+   * Returns OrientDB client connection pool maintained at Gora dataStore.
+   *
+   * @return {@link OPartitionedDatabasePool} OrientDB client connection pool.
+   */
+  public OPartitionedDatabasePool getConnectionPool() {
+    return connectionPool;
   }
 
   public T convertOrientDocToAvroBean(final ODocument obj, final String[] fields) {
@@ -298,7 +421,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
     String[] dbFields = getFieldsToQuery(fields);
     for (String f : dbFields) {
       String docf = orientDBMapping.getDocumentField(f);
-      if (docf == null || obj.containsField(docf))
+      if (docf == null || !obj.containsField(docf))
         continue;
 
       OrientDBMapping.DocumentFieldType storeType = orientDBMapping.getDocumentFieldType(docf);
@@ -336,19 +459,19 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
         result = convertAvroBeanToOrientDoc(fieldSchema, record);
         break;
       case BOOLEAN:
-        result = obj.field(docf);
+        result = OType.convert(obj.field(docf), Boolean.class);
         break;
       case DOUBLE:
-        result = obj.field(docf);
+        result = OType.convert(obj.field(docf), Double.class);
         break;
       case FLOAT:
-        result = obj.field(docf);
+        result = OType.convert(obj.field(docf), Float.class);
         break;
       case INT:
-        result = obj.field(docf);
+        result = OType.convert(obj.field(docf), Integer.class);
         break;
       case LONG:
-        result = obj.field(docf);
+        result = OType.convert(obj.field(docf), Long.class);
         break;
       case STRING:
         result = convertDocFieldToAvroString(storeType, docf, obj);
@@ -358,6 +481,10 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
         break;
       case BYTES:
       case FIXED:
+        if (obj.field(docf) == null) {
+          result = null;
+          break;
+        }
         result = ByteBuffer.wrap((byte[]) obj.field(docf));
         break;
       case NULL:
@@ -378,20 +505,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
                                            final ODocument doc,
                                            final Schema.Field f,
                                            final OrientDBMapping.DocumentFieldType storeType) {
-    if (storeType == OrientDBMapping.DocumentFieldType.EMBEDDEDLIST) {
-      OTrackedList<Object> list = doc.field(docf);
-      List<Object> rlist = new ArrayList<>();
-      if (list == null) {
-        return new DirtyListWrapper(rlist);
-      }
-
-      for (Object item : list) {
-        Object o = convertDocFieldToAvroField(fieldSchema.getElementType(), storeType, f,
-                "item", new ODocument("item", item));
-        rlist.add(o);
-      }
-      return new DirtyListWrapper<>(rlist);
-    } else if (storeType == OrientDBMapping.DocumentFieldType.EMBEDDEDSET) {
+    if (storeType == OrientDBMapping.DocumentFieldType.EMBEDDEDSET) {
       OTrackedSet<Object> set = doc.field(docf);
       List<Object> rlist = new ArrayList<>();
       if (set == null) {
@@ -405,8 +519,20 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       }
       return new DirtyListWrapper<>(rlist);
 
+    } else {
+      OTrackedList<Object> list = doc.field(docf);
+      List<Object> rlist = new ArrayList<>();
+      if (list == null) {
+        return new DirtyListWrapper(rlist);
+      }
+
+      for (Object item : list) {
+        Object o = convertDocFieldToAvroField(fieldSchema.getElementType(), storeType, f,
+                "item", new ODocument("item", item));
+        rlist.add(o);
+      }
+      return new DirtyListWrapper<>(rlist);
     }
-    return null;
   }
 
   private Object convertAvroListToDocField(final String docf, final Collection<?> array,
@@ -422,6 +548,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
         Object result = convertAvroFieldToOrientField(docf, fieldSchema, fieldType, fieldStoreType, item);
         list.add(result);
       }
+      return list;
     } else if (storeType == OrientDBMapping.DocumentFieldType.EMBEDDEDSET) {
       HashSet set;
       set = new HashSet<Object>();
@@ -448,13 +575,13 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       }
 
       for (Map.Entry entry : map.entrySet()) {
-        String mapKey = (String) entry.getKey();
+        String mapKey = decodeFieldKey((String) entry.getKey());
         Object o = convertDocFieldToAvroField(fieldSchema.getValueType(), storeType, f, mapKey,
                 decorateOTrackedMapToODoc(map));
         rmap.put(new Utf8(mapKey), o);
       }
       return new DirtyMapWrapper<>(rmap);
-    } else if (storeType == OrientDBMapping.DocumentFieldType.EMBEDDED) {
+    } else {
       ODocument innerDoc = doc.field(docf);
       Map<Utf8, Object> rmap = new HashMap<>();
       if (innerDoc == null) {
@@ -462,14 +589,13 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       }
 
       for (String fieldName : innerDoc.fieldNames()) {
-        String mapKey = fieldName;
+        String mapKey = decodeFieldKey(fieldName);
         Object o = convertDocFieldToAvroField(fieldSchema.getValueType(), storeType, f, mapKey,
                 innerDoc);
         rmap.put(new Utf8(mapKey), o);
       }
       return new DirtyMapWrapper<>(rmap);
     }
-    return null;
   }
 
   private ODocument decorateOTrackedMapToODoc(OTrackedMap<Object> map) {
@@ -490,7 +616,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
         return map;
 
       for (Map.Entry<CharSequence, ?> e : value.entrySet()) {
-        String mapKey = e.getKey().toString();
+        String mapKey = encodeFieldKey(e.getKey().toString());
         Object mapValue = e.getValue();
 
         OrientDBMapping.DocumentFieldType fieldStoreType = orientDBMapping.getDocumentFieldType(docf);
@@ -499,12 +625,12 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
         map.put(mapKey, result);
       }
       return map;
-    } else if (storeType == OrientDBMapping.DocumentFieldType.EMBEDDED) {
+    } else {
       ODocument doc = new ODocument();
       if (value == null)
         return doc;
       for (Map.Entry<CharSequence, ?> e : value.entrySet()) {
-        String mapKey = e.getKey().toString();
+        String mapKey = encodeFieldKey(e.getKey().toString());
         Object mapValue = e.getValue();
 
         OrientDBMapping.DocumentFieldType fieldStoreType = orientDBMapping.getDocumentFieldType(docf);
@@ -512,8 +638,8 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
                 mapValue);
         doc.field(mapKey, result);
       }
+      return doc;
     }
-    return null;
   }
 
   private Object convertAvroBeanToOrientDoc(final Schema fieldSchema,
@@ -529,8 +655,9 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
     for (Schema.Field recField : fieldSchema.getFields()) {
       Schema innerSchema = recField.schema();
       OrientDBMapping.DocumentFieldType innerStoreType = orientDBMapping
-              .getDocumentFieldType(innerSchema.getName());
-      String innerDocField = orientDBMapping.getDocumentField(recField.name());
+              .getDocumentFieldType(recField.name());
+      String innerDocField = orientDBMapping.getDocumentField(recField.name()) != null ? orientDBMapping
+              .getDocumentField(recField.name()) : recField.name();
       LOG.debug("Load from ODocument (RECORD), field:{}, schemaType:{}, docField:{}, storeType:{}",
               new Object[]{recField.name(), innerSchema.getType(), innerDocField,
                       innerStoreType});
@@ -552,7 +679,7 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       calendar.setTime(dateTime);
       result = new Utf8(DatatypeConverter.printDateTime(calendar));
     } else {
-      result = new Utf8((String) doc.field(docf));
+      result = new Utf8((String) doc.field(encodeFieldKey(docf)));
     }
     return result;
   }
@@ -626,6 +753,26 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       }
     }
     result.field("_id", key);
+    return result;
+  }
+
+  private ODocument updateOrientDocFromAvroBean(final K key, final T persistent, final ODocument result) {
+    for (Schema.Field f : persistent.getSchema().getFields()) {
+      if (persistent.isDirty(f.pos()) /*&& (persistent.get(f.pos()) != null)*/) {
+        String docf = orientDBMapping.getDocumentField(f.name());
+        if (persistent.get(f.pos()) == null) {
+          result.removeField(docf);
+          continue;
+        }
+        Object value = persistent.get(f.pos());
+        OrientDBMapping.DocumentFieldType storeType = orientDBMapping.getDocumentFieldType(docf);
+        LOG.debug("Transform value to ODocument, docField:{}, schemaType:{}, storeType:{}",
+                new Object[]{docf, f.schema().getType(), storeType});
+        Object o = convertAvroFieldToOrientField(docf, f.schema(), f.schema().getType(),
+                storeType, value);
+        result.field(docf, o);
+      }
+    }
     return result;
   }
 
@@ -740,10 +887,35 @@ public class OrientDBStore<K, T extends PersistentBase> extends DataStoreBase<K,
       LOG.debug("Transform value to ODocument , docField:{}, schemaType:{}, storeType:{}",
               new Object[]{member.name(), member.schema().getType(),
                       innerStoreType});
-      record.field(member.name(), convertAvroFieldToOrientField(docf, member.schema()
-              , innerType, innerStoreType, innerValue));
+      Object fieldValue = convertAvroFieldToOrientField(docf, member.schema()
+              , innerType, innerStoreType, innerValue);
+      record.field(member.name(), fieldValue);
     }
     return record;
+  }
+
+  private String encodeFieldKey(final String key) {
+    if (key == null) {
+      return null;
+    }
+    return key.replace(".", "\u00B7")
+            .replace(":", "\u00FF")
+            .replace(";", "\u00FE")
+            .replace(" ", "\u00FD")
+            .replace("%", "\u00FC")
+            .replace("=", "\u00FB");
+  }
+
+  private String decodeFieldKey(final String key) {
+    if (key == null) {
+      return null;
+    }
+    return key.replace("\u00B7", ".")
+            .replace("\u00FF", ":")
+            .replace("\u00FE", ";")
+            .replace("\u00FD", " ")
+            .replace("\u00FC", "%")
+            .replace("\u00FB", "=");
   }
 
 }

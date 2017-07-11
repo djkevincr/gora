@@ -15,4 +15,8 @@
  * limitations under the License.
  */
 
+/**
+ * This package encapsulates all OrientDB dataStore related class implementations.
+ *
+ */
 package org.apache.gora.orientdb;
