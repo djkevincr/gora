@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 /**
  * Driver to set up an embedded OrientDB database instance for Gora
  * dataStore specific integration tests.
- *
  */
 public class GoraOrientDBTestDriver extends GoraTestDriver {
 

@@ -30,7 +30,6 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Executes all the dataStore specific integration tests for OrientDB dataStore.
- *
  */
 public class OrientDBGoraDataStoreTest extends DataStoreTestBase {
 
